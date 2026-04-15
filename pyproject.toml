@@ -1,0 +1,9 @@
+[project]
+name = "game-programmierung"
+version = "0.1.0"
+description = "hello-square starter from the GPG unit 01 slides"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pygame-ce>=2.5.7",
+]
