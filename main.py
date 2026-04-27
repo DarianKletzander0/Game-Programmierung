@@ -1,180 +1,229 @@
-import random  # Fuer Zufallswerte.
+from pathlib import Path
+from random import randint
+import math
 
 import pygame
 
 
-WIDTH = 800
-HEIGHT = 600
-WORLD_WIDTH = 2200  # Groesse der Spielwelt.
-WORLD_HEIGHT = 1600  # Groesse der Spielwelt.
-MIN_WINDOW_WIDTH = 500  # Minimale Fensterbreite.
-MAX_WINDOW_WIDTH = 1200  # Maximale Fensterbreite.
-MIN_WINDOW_HEIGHT = 400  # Minimale Fensterhoehe.
-MAX_WINDOW_HEIGHT = 900  # Maximale Fensterhoehe.
-WINDOW_SIZE_STEP = 40  # Schrittweite fuer Fensteraenderungen.
-SQUARE_SIZE = 40
-SPEED = 5
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 500
 FPS = 60
-BACKGROUND_COLOR = (11, 13, 16)
-SQUARE_COLOR = (255, 107, 53)
-GRID_COLOR = (35, 40, 48)  # Farbe des Rasters.
-GRID_SIZE = 80  # Abstand der Rasterlinien.
-BUBBLE_COUNT = 5  # Anzahl aktiver Blasen.
-BUBBLE_RADIUS = 24  # Radius der Blasen.
-BUBBLE_SPEED_MIN = -3  # Minimale Startgeschwindigkeit.
-BUBBLE_SPEED_MAX = 3  # Maximale Startgeschwindigkeit.
-BUBBLE_RESPAWN_MS = 10_000  # Intervall fuer neue Blasen.
+
+BACKGROUND_COL = (24, 112, 172)
+GROUND_COL = (84, 68, 39)
+PLATFORM_COL = (108, 88, 48)
+PLAYER_COL = (30, 210, 76)
+CIRCLE_COL = (220, 225, 255)
+COLLECTIBLE_COL = (220, 46, 46)
+TEXT_COL = (255, 255, 255)
+
+PLAYER_WIDTH = 32
+PLAYER_HEIGHT = 42
+PLAYER_SPEED = 4.0
+JUMP_SPEED = -10.5
+GRAVITY = 0.35
+
+CIRCLE_RADIUS = 12
+COLLECTIBLE_RADIUS = 9
+COLLECTIBLE_FALL_SPEED = 1.2
+COLLECTIBLE_SPAWN_MS = 900
+GAME_TIME_MS = 45_000
+
+ASSETS_DIR = Path(__file__).parent / "assets"
+PLAYER_IMAGE_PATH = ASSETS_DIR / "player.png"
+JUMP_SOUND_PATH = ASSETS_DIR / "jump.wav"
 
 
-def random_color() -> tuple[int, int, int]:
-    return (
-        random.randint(60, 255),
-        random.randint(60, 255),
-        random.randint(60, 255),
-    )  # Erzeugt eine helle Farbe.
+def player_collides_with(player_rect: pygame.Rect, rect: pygame.Rect) -> bool:
+    return player_rect.colliderect(rect)
 
 
-def create_bubble() -> dict[str, int | tuple[int, int, int]]:
-    dx = 0
-    dy = 0
-    while dx == 0 and dy == 0:
-        dx = random.randint(BUBBLE_SPEED_MIN, BUBBLE_SPEED_MAX)
-        dy = random.randint(BUBBLE_SPEED_MIN, BUBBLE_SPEED_MAX)
+def spawn_collectible(obstacles: list[pygame.Rect]) -> pygame.Rect:
+    x = randint(COLLECTIBLE_RADIUS, SCREEN_WIDTH - COLLECTIBLE_RADIUS)
+    collectible = pygame.Rect(0, 0, COLLECTIBLE_RADIUS * 2, COLLECTIBLE_RADIUS * 2)
+    collectible.center = (x, -COLLECTIBLE_RADIUS)
 
-    return {
-        "x": random.randint(BUBBLE_RADIUS, WORLD_WIDTH - BUBBLE_RADIUS),
-        "y": random.randint(BUBBLE_RADIUS, WORLD_HEIGHT - BUBBLE_RADIUS),
-        "dx": dx,
-        "dy": dy,
-        "color": random_color(),
-    }  # Erzeugt eine Blase.
+    while any(collectible.colliderect(obstacle) for obstacle in obstacles):
+        collectible.centerx = randint(COLLECTIBLE_RADIUS, SCREEN_WIDTH - COLLECTIBLE_RADIUS)
+    return collectible
 
 
-def scaled_velocity(value: int, multiplier: float) -> float:
-    return value * multiplier  # Skaliert die Geschwindigkeit.
+def move_and_collide(
+    player_rect: pygame.Rect,
+    velocity_x: float,
+    velocity_y: float,
+    obstacles: list[pygame.Rect],
+) -> tuple[pygame.Rect, float, bool]:
+    on_ground = False
 
+    player_rect.x += round(velocity_x)
+    for obstacle in obstacles:
+        if player_collides_with(player_rect, obstacle):
+            if velocity_x > 0:
+                player_rect.right = obstacle.left
+            elif velocity_x < 0:
+                player_rect.left = obstacle.right
 
-def next_window_size(current_width: int, current_height: int) -> tuple[int, int]:
-    next_width = current_width + random.choice((-WINDOW_SIZE_STEP, WINDOW_SIZE_STEP))
-    next_height = current_height + random.choice((-WINDOW_SIZE_STEP, WINDOW_SIZE_STEP))
-    next_width = max(MIN_WINDOW_WIDTH, min(next_width, MAX_WINDOW_WIDTH))
-    next_height = max(MIN_WINDOW_HEIGHT, min(next_height, MAX_WINDOW_HEIGHT))
-    return next_width, next_height  # Waehlt eine neue Fenstergroesse.
+    player_rect.y += round(velocity_y)
+    for obstacle in obstacles:
+        if player_collides_with(player_rect, obstacle):
+            if velocity_y > 0:
+                player_rect.bottom = obstacle.top
+                velocity_y = 0
+                on_ground = True
+            elif velocity_y < 0:
+                player_rect.top = obstacle.bottom
+                velocity_y = 0
+
+    player_rect.left = max(player_rect.left, 0)
+    player_rect.right = min(player_rect.right, SCREEN_WIDTH)
+    if player_rect.bottom >= SCREEN_HEIGHT:
+        player_rect.bottom = SCREEN_HEIGHT
+        velocity_y = 0
+        on_ground = True
+    return player_rect, velocity_y, on_ground
 
 
 def main() -> None:
+    pygame.mixer.pre_init(44_100, -16, 1, 512)
     pygame.init()
-    window_width = WIDTH  # Aktuelle Fensterbreite.
-    window_height = HEIGHT  # Aktuelle Fensterhoehe.
-    screen = pygame.display.set_mode((window_width, window_height), pygame.RESIZABLE)
-    pygame.display.set_caption("bubble popping")
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 36)  # Schrift fuer die Anzeige.
 
-    x = WORLD_WIDTH // 2  # Startposition X.
-    y = WORLD_HEIGHT // 2  # Startposition Y.
-    square_color = SQUARE_COLOR  # Aktuelle Farbe der Figur.
-    background_color = BACKGROUND_COLOR  # Aktuelle Hintergrundfarbe.
-    bubbles = [create_bubble() for _ in range(BUBBLE_COUNT)]  # Startet mit Blasen.
-    last_bubble_respawn = pygame.time.get_ticks()  # Startzeit fuer Respawn.
-    score = 0  # Punktestand.
-    bubble_speed_multiplier = 1.0  # Aktueller Tempofaktor.
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Jump & Run")
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont(None, 26)
+    big_font = pygame.font.SysFont(None, 52)
+
+    player_image = pygame.image.load(PLAYER_IMAGE_PATH).convert_alpha()
+    jump_sound = pygame.mixer.Sound(JUMP_SOUND_PATH)
+
+    player_rect = player_image.get_rect(topleft=(80, 260))
+    player_velocity_y = 0.0
+    player_moving_left = False
+    player_moving_right = False
+    jump_requested = False
+    on_ground = False
+
+    circle_x = 520.0
+    circle_y = 70.0
+    circle_movement_x = 1.8
+    circle_movement_y = 0.0
+
+    obstacles = [
+        pygame.Rect(0, SCREEN_HEIGHT - 22, SCREEN_WIDTH, 22),
+        pygame.Rect(60, 390, 165, 14),
+        pygame.Rect(270, 340, 140, 14),
+        pygame.Rect(480, 285, 150, 14),
+        pygame.Rect(160, 235, 145, 14),
+        pygame.Rect(420, 185, 170, 14),
+        pygame.Rect(650, 120, 105, 14),
+    ]
+
+    collectibles: list[pygame.Rect] = []
+    collected = 0
+    status = "Wheee!"
+    start_time = pygame.time.get_ticks()
+    last_collectible_spawn = start_time
+    game_over = False
     running = True
 
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
-        keys = pygame.key.get_pressed()
-        moved = False  # Bewegung im aktuellen Frame.
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            x -= SPEED
-            moved = True
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            x += SPEED
-            moved = True
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
-            y -= SPEED
-            moved = True
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            y += SPEED
-            moved = True
-
-        x = max(0, min(x, WORLD_WIDTH - SQUARE_SIZE))  # Begrenzt X.
-        y = max(0, min(y, WORLD_HEIGHT - SQUARE_SIZE))  # Begrenzt Y.
-
-        if moved and random.random() < 0.08:  # Aendert die Figurfarbe gelegentlich.
-            square_color = random_color()
-
-        for bubble in bubbles:
-            bubble["x"] += scaled_velocity(bubble["dx"], bubble_speed_multiplier)  # Bewegt die Blase.
-            bubble["y"] += scaled_velocity(bubble["dy"], bubble_speed_multiplier)  # Bewegt die Blase.
-
-            if bubble["x"] <= BUBBLE_RADIUS or bubble["x"] >= WORLD_WIDTH - BUBBLE_RADIUS:
-                bubble["dx"] *= -1  # Prallt horizontal ab.
-                bubble["color"] = random_color()  # Aendert die Farbe.
-            if bubble["y"] <= BUBBLE_RADIUS or bubble["y"] >= WORLD_HEIGHT - BUBBLE_RADIUS:
-                bubble["dy"] *= -1  # Prallt vertikal ab.
-                bubble["color"] = random_color()  # Aendert die Farbe.
-
-        player_center_x = x + SQUARE_SIZE // 2
-        player_center_y = y + SQUARE_SIZE // 2
-        remaining_bubbles = []
-        for bubble in bubbles:
-            distance_x = player_center_x - bubble["x"]
-            distance_y = player_center_y - bubble["y"]
-            collision_distance = BUBBLE_RADIUS + SQUARE_SIZE // 2
-            if distance_x * distance_x + distance_y * distance_y <= collision_distance * collision_distance:
-                score += 1  # Erhoeht den Punktestand.
-                background_color = random_color()  # Aendert den Hintergrund.
-                bubble_speed_multiplier += 0.1  # Erhoeht das Tempo.
-                window_width, window_height = next_window_size(window_width, window_height)  # Aendert die Fenstergroesse.
-                screen = pygame.display.set_mode((window_width, window_height), pygame.RESIZABLE)  # Aktualisiert das Fenster.
-            else:
-                remaining_bubbles.append(bubble)
-        bubbles = remaining_bubbles  # Entfernt geplatzte Blasen.
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_a:
+                    player_moving_left = True
+                elif event.key == pygame.K_d:
+                    player_moving_right = True
+                elif event.key in (pygame.K_w, pygame.K_SPACE):
+                    jump_requested = True
+                elif event.key == pygame.K_ESCAPE:
+                    running = False
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_a:
+                    player_moving_left = False
+                elif event.key == pygame.K_d:
+                    player_moving_right = False
 
         now = pygame.time.get_ticks()
-        if now - last_bubble_respawn >= BUBBLE_RESPAWN_MS:
-            while len(bubbles) < BUBBLE_COUNT:
-                bubbles.append(create_bubble())  # Fuellt Blasen wieder auf.
-            last_bubble_respawn = now  # Setzt den Timer neu.
+        remaining_ms = max(0, GAME_TIME_MS - (now - start_time))
+        if remaining_ms == 0:
+            game_over = True
 
-        camera_x = max(0, min(x - window_width // 2, WORLD_WIDTH - window_width))  # Berechnet Kamera X.
-        camera_y = max(0, min(y - window_height // 2, WORLD_HEIGHT - window_height))  # Berechnet Kamera Y.
+        if not game_over:
+            player_velocity_x = 0.0
+            if player_moving_right:
+                player_velocity_x += PLAYER_SPEED
+            if player_moving_left:
+                player_velocity_x -= PLAYER_SPEED
 
-        screen.fill(background_color)
-        for grid_x in range(0, WORLD_WIDTH + 1, GRID_SIZE):  # Zeichnet vertikale Linien.
-            pygame.draw.line(
-                screen,
-                GRID_COLOR,
-                (grid_x - camera_x, -camera_y),
-                (grid_x - camera_x, WORLD_HEIGHT - camera_y),
+            if jump_requested and on_ground:
+                player_velocity_y = JUMP_SPEED
+                on_ground = False
+                jump_sound.play()
+            jump_requested = False
+
+            player_velocity_y += GRAVITY
+            player_rect, player_velocity_y, on_ground = move_and_collide(
+                player_rect,
+                player_velocity_x,
+                player_velocity_y,
+                obstacles,
             )
-        for grid_y in range(0, WORLD_HEIGHT + 1, GRID_SIZE):  # Zeichnet horizontale Linien.
-            pygame.draw.line(
-                screen,
-                GRID_COLOR,
-                (-camera_x, grid_y - camera_y),
-                (WORLD_WIDTH - camera_x, grid_y - camera_y),
-            )
 
-        for bubble in bubbles:
-            bubble_screen_x = bubble["x"] - camera_x
-            bubble_screen_y = bubble["y"] - camera_y
-            pygame.draw.circle(
-                screen,
-                bubble["color"],
-                (int(bubble_screen_x), int(bubble_screen_y)),
-                BUBBLE_RADIUS,
-            )  # Zeichnet die Blase.
+            circle_movement_y += GRAVITY * 0.35
+            circle_x += circle_movement_x
+            circle_y += circle_movement_y
 
-        player_screen_x = x - camera_x  # Bildschirmposition X.
-        player_screen_y = y - camera_y  # Bildschirmposition Y.
-        pygame.draw.rect(screen, square_color, (player_screen_x, player_screen_y, SQUARE_SIZE, SQUARE_SIZE))
-        score_surface = font.render(f"Punkte: {score}", True, (245, 245, 245))
-        screen.blit(score_surface, (20, 20))  # Zeichnet die Punkte.
+            if circle_y >= SCREEN_HEIGHT - 22 - CIRCLE_RADIUS:
+                circle_y = SCREEN_HEIGHT - 22 - CIRCLE_RADIUS
+                circle_movement_y = -abs(circle_movement_y) * 0.92
+            if circle_x <= CIRCLE_RADIUS or circle_x >= SCREEN_WIDTH - CIRCLE_RADIUS:
+                circle_movement_x = -circle_movement_x
+
+            circle_rect = pygame.Rect(0, 0, CIRCLE_RADIUS * 2, CIRCLE_RADIUS * 2)
+            circle_rect.center = (round(circle_x), round(circle_y))
+            status = "Ouch!" if player_rect.colliderect(circle_rect) else "Wheee!"
+
+            if now - last_collectible_spawn >= COLLECTIBLE_SPAWN_MS:
+                collectibles.append(spawn_collectible(obstacles))
+                last_collectible_spawn = now
+
+            remaining_collectibles = []
+            for collectible in collectibles:
+                collectible.y += round(COLLECTIBLE_FALL_SPEED)
+                if player_rect.colliderect(collectible):
+                    collected += 1
+                elif any(collectible.colliderect(obstacle) for obstacle in obstacles):
+                    continue
+                elif collectible.top <= SCREEN_HEIGHT:
+                    remaining_collectibles.append(collectible)
+            collectibles = remaining_collectibles
+
+        screen.fill(BACKGROUND_COL)
+        for obstacle in obstacles:
+            color = GROUND_COL if obstacle.bottom == SCREEN_HEIGHT else PLATFORM_COL
+            pygame.draw.rect(screen, color, obstacle)
+
+        pygame.draw.circle(screen, CIRCLE_COL, (round(circle_x), round(circle_y)), CIRCLE_RADIUS)
+        for collectible in collectibles:
+            pygame.draw.circle(screen, COLLECTIBLE_COL, collectible.center, COLLECTIBLE_RADIUS)
+
+        screen.blit(player_image, player_rect)
+        screen.blit(font.render(status, True, TEXT_COL), (24, 22))
+        screen.blit(font.render(f"Kugeln: {collected}", True, TEXT_COL), (24, 50))
+        screen.blit(font.render(f"Zeit: {math.ceil(remaining_ms / 1000)}", True, TEXT_COL), (24, 78))
+
+        if game_over:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            screen.blit(overlay, (0, 0))
+            title = big_font.render("Spielende", True, TEXT_COL)
+            score_text = font.render(f"Gesamtpunktzahl: {collected}", True, TEXT_COL)
+            screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)))
+            screen.blit(score_text, score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 18)))
+
         pygame.display.flip()
         clock.tick(FPS)
 
