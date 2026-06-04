@@ -1,0 +1,52 @@
+# Leveldesign Real Fake Game:
+# ============================
+# 
+# The number-sign # introduces a comment.
+# If placed at the beginning of a line, the line is ignored.
+#
+# Configure a level:
+# -------------------
+#
+# T() means the number of tracks.
+# B(background_img) loads the image file named "background_img.png". 
+# M(bg_music) loads the music file named "bg_music.wav".
+# D(10000) describes the length and duration of the level in frames.
+# P(0.1) describes the pause between frames (here: 0.1 seconds; < 10 fps.)
+#
+# Example:
+# L T(3) B(Backgnd001) M(Backgnd001music) D(2000)
+#
+#
+# Introduce an enemy:
+# --------------------
+#
+# "E": means enemy.
+# "D": means the damage it can do.
+# "S": means the speed it can move. S(1) means one pixel per frame in each direction, including diagonally.
+# "A(example)": means animation. The files named example001.png, example002.png, etc. will be loaded.
+# "N": means the number of enemies who will be spawned.
+# "T": means the track upon which the swarm will be released (numbering starts at 0).
+# "P": means the position within the duration in a level, meaning when, the enemies will spawn.
+#
+# This command creates an enemy with damage 1, speed 1, an animation cycle read from files named
+# "EnemyA001.png", "EnemyA002.png", etc., creates 12 of them, and places them on the first track.
+# E D(1) S(1) A(EnemyA) N(12) T(0)
+#
+#
+# Introduce an obstacle:
+# -----------------------
+#
+# "O": means an obstacle.
+# "T": Describes to the right of which track it is. Meaning T(0) means it is between the first and the second track.
+# "D": Describes at which point it appears (D like in Duration).
+# "L": Describes how long it is (in duration points).
+# "C": Describes the color. The syntax is "C(R,B,G)", where the three values show red, green and blue values for the colour.
+# 		The values for R, G, B, must be between 0 and 255.
+# "W": Describes the pixel width.
+
+
+L T(2) B(background.png) M(Backgnd001music) D(2000)
+
+E D(20) S(1) A(enemy) N(5) T(0) P(100)
+
+O T(0) D(100) L(100) C(35,56,90) W(5)
