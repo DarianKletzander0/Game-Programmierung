@@ -265,7 +265,7 @@ Jeder Zustand wird auf dieselbe 960-mal-720-Fläche gerendert. Der Test bestäti
 
 ### 10.6 Regression
 
-Die Tests der Übungen 003 und 004 bleiben Bestandteil der Gesamtsuite. Damit zeigt die Abgabe sowohl den funktionierenden Kursstand als auch das neue Abschlussprojekt. Zum Abnahmezeitpunkt bestanden alle 66 automatisierten Tests.
+Die Tests der Übungen 003 und 004 bleiben Bestandteil der Gesamtsuite. Damit zeigt die Abgabe sowohl den funktionierenden Kursstand als auch das neue Abschlussprojekt. Zum Abnahmezeitpunkt bestanden alle 73 automatisierten Tests.
 
 ## 11. Bedienbarkeit und Feedback
 

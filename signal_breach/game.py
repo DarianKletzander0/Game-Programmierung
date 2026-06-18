@@ -25,7 +25,8 @@ class Game:
     def __init__(self, profile_path: Path = PROFILE_PATH, audio: bool = True):
         self.profile_path = Path(profile_path)
         self.profile = load_profile(self.profile_path)
-        self.audio = AudioManager(audio and self.profile.sound_enabled)
+        self.audio = AudioManager(audio)
+        self.audio.set_enabled(audio and self.profile.sound_enabled)
         self.state = ScreenState.MENU
         self.running = True
         self.fullscreen_requested = False
@@ -129,8 +130,9 @@ class Game:
     def activate_impulse(self) -> int:
         if self.state is not ScreenState.PLAYING:
             return 0
+        was_ready = self.player.alive and self.player.impulse_cooldown <= 0
         removed = self.player.activate_impulse(self.hostile_projectiles)
-        if self.player.impulse_cooldown > 0 and (removed or self.pulse_visible <= 0):
+        if was_ready:
             self.pulse_visible = 0.35
             self.audio.play("impulse")
         return removed

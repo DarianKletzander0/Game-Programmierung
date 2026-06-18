@@ -28,6 +28,31 @@ class MainStateTests(unittest.TestCase):
         self.assertEqual(state["last_collectible_spawn"], 1_000)
         self.assertIs(state["game_over"], False)
 
+    def test_canvas_rect_preserves_aspect_ratio(self) -> None:
+        cases = [
+            ((960, 720), (0, 0, 960, 720)),
+            ((1920, 1080), (240, 0, 1440, 1080)),
+            ((600, 900), (0, 225, 600, 450)),
+        ]
+
+        for surface_size, expected_rect in cases:
+            with self.subTest(surface_size=surface_size):
+                surface = pygame.Surface(surface_size)
+                self.assertEqual(tuple(main._canvas_rect(surface)), expected_rect)
+
+    def test_mouse_position_is_mapped_to_virtual_canvas(self) -> None:
+        target = pygame.Rect(240, 0, 1440, 1080)
+        event = pygame.event.Event(
+            pygame.MOUSEMOTION,
+            pos=target.center,
+            rel=(0, 0),
+            buttons=(False, False, False),
+        )
+
+        mapped = main._map_mouse_event(event, target)
+
+        self.assertEqual(mapped.pos, (480, 360))
+
 
 class HighscoreTests(unittest.TestCase):
     def test_load_highscore_returns_zero_when_file_is_missing(self) -> None:

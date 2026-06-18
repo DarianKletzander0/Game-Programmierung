@@ -11,8 +11,8 @@ from signal_breach.audio import tone
 from signal_breach.entities import Enemy, Projectile
 from signal_breach.game import Game
 from signal_breach.levels import SECTORS, SectorRuntime
-from signal_breach.model import ScreenState
-from signal_breach.persistence import load_profile
+from signal_breach.model import Profile, ScreenState
+from signal_breach.persistence import load_profile, save_profile
 from signal_breach.rendering import Renderer
 
 
@@ -158,6 +158,58 @@ class GameStateTests(unittest.TestCase):
             game.complete_sector()
             game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r))
             self.assertIs(game.state, ScreenState.MENU)
+
+    def test_impulse_during_cooldown_does_not_restart_visual_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            game.start_run()
+            game.activate_impulse()
+            for _ in range(13):
+                game.update(1 / 30)
+            self.assertEqual(game.pulse_visible, 0.0)
+            self.assertGreater(game.player.impulse_cooldown, 0.0)
+
+            game.activate_impulse()
+
+            self.assertEqual(game.pulse_visible, 0.0)
+
+    def test_sound_can_be_enabled_when_profile_started_muted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "profile.json"
+            save_profile(path, Profile(sound_enabled=False))
+            game = Game(profile_path=path, audio=True)
+            self.assertFalse(game.audio.enabled)
+
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_m))
+
+            self.assertTrue(game.audio.enabled)
+            self.assertTrue(game.audio.available)
+
+    def test_complete_simulation_spawns_all_bosses_and_reaches_win(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            game.start_run()
+            boss_sectors: set[int] = set()
+
+            for frame in range(12_000):
+                game.run.player.max_hp = 100_000
+                game.player.hp = 100_000
+                if frame % 20 == 0:
+                    game.player_projectiles.extend(
+                        Projectile(enemy.pos.copy(), pygame.Vector2(), 99_999, False)
+                        for enemy in game.enemies
+                    )
+                game.update(1 / 60)
+                if game.boss is not None:
+                    boss_sectors.add(game.sector_index)
+                if game.state is ScreenState.SHOP:
+                    game.start_next_sector()
+                if game.state is ScreenState.WON:
+                    break
+
+            self.assertIs(game.state, ScreenState.WON)
+            self.assertEqual(boss_sectors, {0, 1, 2})
+            self.assertEqual(game.profile.unlocked_sector, 3)
 
 
 class AudioGenerationTests(unittest.TestCase):

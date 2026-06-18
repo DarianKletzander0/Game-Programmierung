@@ -103,6 +103,25 @@ class EnemyTests(unittest.TestCase):
         self.assertGreaterEqual(len(shots), 3)
         self.assertEqual(summons, [])
 
+    def test_summon_boss_creates_two_weaver_helpers_in_later_phase(self) -> None:
+        boss = Boss(pygame.Vector2(480, 120), difficulty=1.0, pattern="summon")
+        boss.hp = boss.max_hp // 2
+
+        shots, summons = boss.update(2.0, pygame.Vector2(480, 600))
+
+        self.assertGreaterEqual(len(shots), 3)
+        self.assertEqual([enemy.kind for enemy in summons], ["weaver", "weaver"])
+
+    def test_core_boss_creates_radial_attack_in_later_phase(self) -> None:
+        boss = Boss(pygame.Vector2(480, 120), difficulty=1.0, pattern="core")
+        boss.hp = 1
+
+        shots, summons = boss.update(2.0, pygame.Vector2(480, 600))
+
+        self.assertGreaterEqual(len(shots), 14)
+        self.assertEqual(summons, [])
+        self.assertGreater(len({round(shot.velocity.angle_to((0, 1))) for shot in shots}), 10)
+
 
 if __name__ == "__main__":
     unittest.main()
