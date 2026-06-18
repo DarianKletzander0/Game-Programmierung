@@ -1,0 +1,12 @@
+# Level 2 - more enemies, slightly faster movement, boss near the end.
+
+L T(3) B(background_tile_01.png,background_tile_02.png) M(Backgnd001music) D(2200)
+
+E D(22) S(1) A(enemy) N(4) T(0) P(120)
+E D(22) S(2) A(enemy) N(4) T(1) P(480)
+E V(zigzag) D(24) S(2) A(enemy) N(3) T(2) P(860)
+
+BOSS D(22) S(2) HP(12) A(enemy) T(1) P(1920)
+
+O T(0) D(260) L(110) C(80,170,90) W(6)
+O T(1) D(780) L(110) C(170,90,80) W(6)

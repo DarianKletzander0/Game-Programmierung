@@ -1,0 +1,12 @@
+# Level 3 - denser enemy waves and a tougher final boss.
+
+L T(3) B(background_tile_01.png,background_tile_02.png) M(Backgnd001music) D(2400)
+
+E D(24) S(2) A(enemy) N(5) T(0) P(100)
+E V(zigzag) D(26) S(2) A(enemy) N(5) T(1) P(420)
+E V(zigzag) D(28) S(3) A(enemy) N(5) T(2) P(760)
+
+BOSS D(28) S(3) HP(16) A(enemy) T(1) P(2120)
+
+O T(0) D(220) L(120) C(80,170,90) W(6)
+O T(1) D(660) L(120) C(80,170,90) W(6)
