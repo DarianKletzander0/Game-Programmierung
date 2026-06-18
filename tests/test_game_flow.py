@@ -1,9 +1,19 @@
 import os
+from pathlib import Path
+import tempfile
 import unittest
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
+import pygame
+
+from signal_breach.audio import tone
+from signal_breach.entities import Enemy, Projectile
+from signal_breach.game import Game
 from signal_breach.levels import SECTORS, SectorRuntime
+from signal_breach.model import ScreenState
+from signal_breach.persistence import load_profile
+from signal_breach.rendering import Renderer
 
 
 class SectorDefinitionTests(unittest.TestCase):
@@ -55,6 +65,142 @@ class SectorRuntimeTests(unittest.TestCase):
         self.assertFalse(runtime.should_spawn_boss(active_normal_enemies=1))
         self.assertTrue(runtime.should_spawn_boss(active_normal_enemies=0))
         self.assertFalse(runtime.should_spawn_boss(active_normal_enemies=0))
+
+
+class GameStateTests(unittest.TestCase):
+    def test_menu_pause_shop_win_and_restart_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+
+            self.assertIs(game.state, ScreenState.MENU)
+            game.start_run()
+            self.assertIs(game.state, ScreenState.PLAYING)
+
+            game.toggle_pause()
+            self.assertIs(game.state, ScreenState.PAUSED)
+            game.toggle_pause()
+            self.assertIs(game.state, ScreenState.PLAYING)
+
+            game.complete_sector()
+            self.assertIs(game.state, ScreenState.SHOP)
+            game.sector_index = 2
+            game.complete_sector()
+            self.assertIs(game.state, ScreenState.WON)
+
+            game.restart()
+            self.assertIs(game.state, ScreenState.MENU)
+
+    def test_paused_update_does_not_advance_simulation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            game.start_run()
+            game.toggle_pause()
+            elapsed = game.sector.elapsed
+
+            game.update(2.0)
+
+            self.assertEqual(game.sector.elapsed, elapsed)
+
+    def test_combat_hit_removes_enemy_and_awards_score(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            game.start_run()
+            enemy = Enemy.create("drifter", pygame.Vector2(300, 250), 1.0)
+            enemy.hp = 1
+            game.enemies = [enemy]
+            game.player_projectiles = [
+                Projectile(
+                    pygame.Vector2(300, 250),
+                    pygame.Vector2(),
+                    damage=1,
+                    hostile=False,
+                )
+            ]
+
+            game.update(1 / 60)
+
+            self.assertEqual(game.enemies, [])
+            self.assertEqual(game.run.score, enemy.points)
+            self.assertEqual(game.run.currency, enemy.currency)
+
+    def test_game_over_persists_highscore_and_best_combo(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "profile.json"
+            game = Game(profile_path=path, audio=False)
+            game.start_run()
+            game.run.score = 1234
+            game.run.best_combo = 8
+            game.player.hp = 0
+
+            game.update(1 / 60)
+            profile = load_profile(path)
+
+            self.assertIs(game.state, ScreenState.GAME_OVER)
+            self.assertEqual(profile.highscore, 1234)
+            self.assertEqual(profile.best_combo, 8)
+
+    def test_keyboard_events_control_start_pause_shop_and_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+            self.assertIs(game.state, ScreenState.PLAYING)
+
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_p))
+            self.assertIs(game.state, ScreenState.PAUSED)
+
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_p))
+            game.complete_sector()
+            game.run.currency = 99
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_1))
+            self.assertEqual(game.upgrades.levels["damage"], 1)
+
+            game.sector_index = 2
+            game.complete_sector()
+            game.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r))
+            self.assertIs(game.state, ScreenState.MENU)
+
+
+class AudioGenerationTests(unittest.TestCase):
+    def test_tone_returns_signed_16_bit_mono_samples(self) -> None:
+        samples = tone(440.0, 0.1)
+
+        self.assertEqual(len(samples), 4410 * 2)
+        self.assertNotEqual(samples, bytes(len(samples)))
+
+
+class RenderingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        pygame.init()
+        pygame.display.set_mode((1, 1))
+
+    def test_all_game_states_render_to_a_single_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            game = Game(profile_path=Path(temp_dir) / "profile.json", audio=False)
+            renderer = Renderer()
+            surface = pygame.Surface((960, 720))
+
+            states = [ScreenState.MENU]
+            game.start_run()
+            states.extend(
+                [
+                    ScreenState.PLAYING,
+                    ScreenState.PAUSED,
+                    ScreenState.SHOP,
+                    ScreenState.GAME_OVER,
+                    ScreenState.WON,
+                ]
+            )
+            for state in states:
+                with self.subTest(state=state):
+                    game.state = state
+                    renderer.draw(surface, game)
+                    colors = {
+                        surface.get_at((x, y))[:3]
+                        for x in range(0, surface.get_width(), 40)
+                        for y in range(0, surface.get_height(), 40)
+                    }
+                    self.assertGreater(len(colors), 5)
 
 
 if __name__ == "__main__":
