@@ -1,0 +1,8 @@
+[project]
+name = "uebung-003"
+version = "0.1.0"
+description = "RealFakeGame Uebung 003"
+requires-python = ">=3.14"
+dependencies = [
+    "pygame-ce>=2.5.7",
+]
